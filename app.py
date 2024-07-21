@@ -1,18 +1,17 @@
-from flask import Flask, request, render_template, redirect, send_file, session, url_for, jsonify
+from flask import Flask, request, make_response,send_file, render_template, redirect, session, url_for, jsonify
 from flask_sqlalchemy import SQLAlchemy
 import bcrypt
 import logging
 import json
-import qrcode
+import qrcode  # Import QR code library
 import io
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from sqlalchemy import LargeBinary
-
+import sqlite3
 
 from flask import send_file
 from PIL import Image, ImageDraw, ImageFont
-
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
@@ -71,17 +70,16 @@ class User(db.Model):
     name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(100), unique=True)
     password = db.Column(db.String(100))
+    is_admin = db.Column(db.Integer)
 
-    def __init__(self, email, password, name):
+    def __init__(self, email, password, name, is_admin):
         self.name = name
         self.email = email
         self.password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        self.is_admin = is_admin       
     
     def check_password(self, password):
         return bcrypt.checkpw(password.encode('utf-8'), self.password.encode('utf-8'))
-
-
-#qr and pdf
 
 class LevelSensorData(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -89,10 +87,10 @@ class LevelSensorData(db.Model):
     full_addr = db.Column(db.Integer)
     sensor_data = db.Column(db.Float)
     vehicleno = db.Column(db.String(50))
-    volume_liters = db.Column(db.Float)
+    volume_liters = db.Column(db.Float)  # New column for converted volumes
     qrcode = db.Column(LargeBinary)
     pdf = db.Column(LargeBinary)
-    
+   
     def __init__(self, date, full_addr, sensor_data, vehicleno, volume_liters):
         self.date = date
         self.full_addr = full_addr
@@ -132,15 +130,28 @@ class LevelSensorData(db.Model):
 
         buffer.seek(0)
         return buffer.getvalue()
-
+    
     def __repr__(self):
         return (f"<LevelSensorData(date='{self.date}', full_addr='{self.full_addr}', "
                 f"sensor_data={self.sensor_data}, vehicleno='{self.vehicleno}', "
                 f"volume_liters={self.volume_liters})>")
+
+def create_admin_user():
+    admin_email = 'admin@gmail.com'
+    admin_password = 'admin'
+    admin_name = 'Admin'
     
+    existing_admin = User.query.filter_by(email=admin_email).first()
+    if not existing_admin:
+        admin_user = User(email=admin_email, password=admin_password, name=admin_name, is_admin=1)
+        db.session.add(admin_user)
+        db.session.commit()
+        print("Admin user created")
 
 with app.app_context():
     db.create_all()
+    create_admin_user()  # Call the function to create the admin user
+    
 
 @app.route('/')
 def index():
@@ -152,8 +163,9 @@ def signup():
         name = request.form['name']
         email = request.form['email']
         password = request.form['password']
+        is_admin = request.form['is_admin']
 
-        new_user = User(name=name, email=email, password=password)
+        new_user = User(name=name, email=email, password=password, is_admin=is_admin)
         db.session.add(new_user)
         db.session.commit()
         return redirect('/login')
@@ -166,23 +178,21 @@ def api_signup():
     name = data.get('name')
     email = data.get('email')
     password = data.get('password')
+    is_admin = data.get('is_admin')
 
     if not name or not email or not password:
-        return jsonify({"message": "Please provide name, email, and password"}), 400
+        return jsonify({"message": "Please provide name, email, isAdmin and password"}), 400
 
     try:
         if User.query.filter_by(email=email).first():
             return jsonify({"message": "Email already registered"}), 400
 
-        new_user = User(name=name, email=email, password=password)
+        new_user = User(name=name, email=email, password=password,is_admin=is_admin)
         db.session.add(new_user)
         db.session.commit()
         return jsonify({"message": "User registered successfully"}), 201
     except Exception as e:
         return jsonify({"message": f"Error: {str(e)}"}), 500
-    
-
-
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -192,27 +202,29 @@ def login():
         email = request.form['email']
         password = request.form['password']
 
-        if email == 'admin@gmail.com' and password == 'admin':
-            session['email'] = email
-            return redirect('/dashboard')
+        user = User.query.filter_by(email=email).first()
+        
+        if user and user.check_password(password):
+            session['email'] = user.email
+            if user.is_admin == 1:
+                return redirect('/dashboard')
+            elif user.is_admin == 0:
+                return redirect('/dashboard')
         else:
             error = 'Please provide correct credentials to login.'
 
     return render_template('login.html', error=error)
-
-
-
-
-
 
 @app.route('/api/login', methods=['POST'])
 def api_login():
     data = request.json
     email = data['email']
     password = data['password']
+    is_admin = data['is_admin']
 
-    if email == 'admin@gmail.com' and password == 'admin':
-        session['email'] = email
+    user = User.query.filter_by(email=email).first()
+    if user and user.check_password(password):
+        session['email'] = user.email
         return jsonify({"message": "Login successful"}), 200
     return jsonify({"message": "Invalid credentials"}), 401
 
@@ -229,7 +241,7 @@ def dashboard():
                 (LevelSensorData.date.like(f'%{search_query}%')) |
                 (LevelSensorData.full_addr.like(f'%{search_query}%')) |
                 (LevelSensorData.sensor_data.like(f'%{search_query}%')) |
-                (LevelSensorData.vehicleno.like(f'%{search_query}%'))
+                (LevelSensorData.imei.like(f'%{search_query}%'))
             ).order_by(LevelSensorData.date.desc()).paginate(page=page, per_page=10)
         else:
             if filter_option == 'oldest':
@@ -278,6 +290,7 @@ api_handler.setLevel(logging.INFO)
 api_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
 api_logger.addHandler(api_handler)
 
+
 @app.route('/level_sensor_data', methods=['POST'])
 def receive_level_sensor_data():
     if request.method == 'POST':
@@ -285,7 +298,6 @@ def receive_level_sensor_data():
             if not request.is_json:
                 api_logger.error("Request content type is not JSON")
                 return jsonify({'status': 'failure', 'message': 'Request content type is not JSON'}), 400
-            
             request_data = request.get_json()
             modbus_test_data = request_data.get('level_sensor_data', '{}')
             try:
@@ -347,8 +359,6 @@ def receive_level_sensor_data():
     return redirect('/dashboard')
 
 
-
-
 @app.route('/api/device_entries_logged', methods=['GET'])
 def api_device_entries_logged():
     if 'email' in session:
@@ -401,14 +411,13 @@ def interpolate(x1, y1, x2, y2, x):
     return round(y1 + ((y2 - y1) / (x2 - x1)) * (x - x1), 3)
 
 
-
-
 @app.route('/api/sensor_data')
 def get_sensor_data():
     try:
         sensor_data = LevelSensorData.query.all()
         if not sensor_data:
             return jsonify(error='No data available'), 404
+        
 
         labels = [str(data.date) for data in sensor_data]
         sensor_values = [data.sensor_data for data in sensor_data]
@@ -419,7 +428,6 @@ def get_sensor_data():
         print(f"Error fetching sensor data: {str(e)}")
         return jsonify(error='Internal server error'), 500
     
-
     #qr and pdf
 @app.route('/generate_pdf/<int:id>', methods=['GET'])
 def generate_pdf(id):
@@ -430,12 +438,7 @@ def generate_pdf(id):
         download_name=f"record_{id}.pdf",
         mimetype='application/pdf'
     )
-
-
-
-
-
-
+ 
 import json
 # Modify the generate_qr function to encode the URL of the PDF route
 @app.route('/generate_qr/<int:id>')
@@ -454,7 +457,7 @@ def generate_qr(id):
     img_io = io.BytesIO()
     img.save(img_io, format='PNG')
     img_io.seek(0)
-    return send_file(img_io, mimetype='image/png')
+    return send_file(img_io, mimetype='image/png')  
 
 # Create a route to handle redirection from QR code to PDF
 @app.route('/scan_qr/<vehicleno>', methods=['GET'])
@@ -467,7 +470,26 @@ def scan_qr(vehicleno):
 
 
 
+#to update sensor table
+
+def get_new_data(last_id):
+    conn = sqlite3.connect('database.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM sensors WHERE id > ?", (last_id,))
+    new_data = cursor.fetchall()
+    conn.close()
+    return new_data
+
+@app.route('/fetch_new_data', methods=['GET'])
+def fetch_new_data():
+    last_id = int(request.args.get('last_id', 0))
+    new_data = get_new_data(last_id)
+    return jsonify(new_data)
+
+
+
 
 
 if __name__ == '__main__':
+    
     app.run(debug=True)
