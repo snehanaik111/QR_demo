@@ -40,7 +40,6 @@ justify-content: space-between;
 align-items: center; 
 } 
 
-
 .logo { 
 padding: 10px 10px;
 float: center;
@@ -50,7 +49,7 @@ color: rgb(6, 21, 10);
 } 
 
 .icn { 
-height: 30px; 
+height: 50px; 
 } 
 
 .menuicn { 
@@ -58,7 +57,6 @@ cursor: pointer;
 } 
 
 .searchbar{ 
-	size: 40px;
 	padding: 10px 10px ;
 	display: flex; 
 	align-items: right; 
@@ -91,7 +89,7 @@ outline: none;
 border: none; 
 } 
 .searchbtn { 
-width: 150px; 
+width: 60px; 
 height: 42px; 
 display: flex; 
 align-items: center; 
@@ -102,7 +100,7 @@ cursor: pointer;
 } 
 
 .message { 
-padding: 10px 10px;
+padding: 10px 3px;
 float: center;
 gap: 10px; 
 position: relative; 
@@ -358,7 +356,7 @@ font-weight: 600;
 
 .label-tag { 
 width: 100px; 
-text-align: center; 
+text-align: match-parent; 
 background-color: rgb(0, 177, 0); 
 color: white; 
 border-radius: 4px; 
@@ -372,7 +370,7 @@ border-radius: 4px;
   
   .td, th {
 	border: 1px solid #dddddd;
-	text-align: left;
+	text-align: match-parent;
 	padding: 8px;
   }
   
@@ -454,4 +452,48 @@ border-radius: 4px;
 
 .pagination button {
     margin: 0 5px;
+}
+/* Add this CSS for the popup message */
+.no-data-message {
+    display: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    font-size: 18px;
+    color: red;
+    background-color: #fff; /* White background */
+    padding: 10px; /* Add some padding */
+    border-radius: 5px; /* Rounded corners */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Shadow effect */
+}
+
+
+
+.styled-button {
+  padding: 7px 10px;
+  margin: 7px;
+  border: none;
+  border-radius: 4px;
+  background-color: #007BFF;
+  color: #ffffff;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  text-decoration: none; /* Removes underline from the link */
+}
+
+.styled-button:hover {
+  background-color: #0056b3;
+}
+
+.styled-link {
+  color: #ffffff;
+  text-decoration: none; 
+ /* Ensures link text has no underline */
+}
+
+.styled-link:hover {
+  text-decoration: none; /* Adds underline on hover */
 }
